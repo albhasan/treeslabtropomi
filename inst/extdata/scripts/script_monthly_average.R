@@ -62,9 +62,15 @@ agg_tropomi <- function(file_path, vars, out_crs, grid, grid_resolution) {
 
     # Export TROPOMI to points.
     grid_bbox <- sf::st_bbox(grid)
-    data_sf_ls <- tropomi2sf(fname = file_path, vars = vars, out_crs = out_crs,
-        min_x = grid_bbox["xmin"], min_y = grid_bbox["ymin"],
-        max_x = grid_bbox["xmax"], max_y = grid_bbox["ymax"])
+    data_sf_ls <- tropomiday2sf(
+        fname = file_path,
+        vars = vars,
+        out_crs = out_crs,
+        min_x = grid_bbox["xmin"],
+        min_y = grid_bbox["ymin"],
+        max_x = grid_bbox["xmax"],
+        max_y = grid_bbox["ymax"]
+    )
 
     # Aggregate points into a vector grid.
     data_sf_ls <- lapply(

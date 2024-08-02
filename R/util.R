@@ -8,6 +8,6 @@
 # @return a logical.
 #
 is_outlier <- function(x) {
-    return(x %in% boxplot.stats(x)$out)
+    return(x %in% grDevices::boxplot.stats(x)$out)
 }
 

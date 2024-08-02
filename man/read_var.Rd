@@ -4,7 +4,7 @@
 \alias{read_var}
 \title{Read data from a HDF5 file}
 \usage{
-read_var(v, fname, group)
+read_var(v, fname, group = NA)
 }
 \arguments{
 \item{v}{a character(1). Variable's name.}

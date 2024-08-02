@@ -1,9 +1,9 @@
 Package: treeslabtropomi
 Title: Utilities for Handling TROPOMI SIF Data
-Version: 0.0.0.9001
-Authors@R: 
-    person("Alber", "Sánchez", , "alber.ipia@inpe.br", role = c("aut", "cre"),
-           comment = c(ORCID = "0000-0001-7966-2880"))
+Version: 0.0.0.9002
+Authors@R: c(person("Alber",  "Sánchez",  email = "alber.ipia@inpe.br",       role = c("aut", "cre"), comment = c(ORCID = "0000-0001-7966-2880")),
+             person("Edgard", "Bontempo", email = "edgardbontempo@gmail.com", role = c("aut"),        comment = c(ORCID = "0000-0002-4004-9605"))
+            )
 Description: Utility functions for processing solar-induced chlorophyll
   fluorescence data in netCDF4 format.
 License: MIT + file LICENSE
@@ -15,6 +15,7 @@ Suggests:
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
 Imports: 
+    grDevices,
     rhdf5,
     sf,
     terra
