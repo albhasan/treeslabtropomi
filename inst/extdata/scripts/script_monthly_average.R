@@ -140,12 +140,24 @@ files_df <-
     # Export TROPOMI to raster
     dplyr::mutate(raster_ls = purrr::map(
         file_path, 
-        .f = agg_tropomi, 
+# TODO: Remove call to possibly
+        .f = purrr::possibly(agg_tropomi, NULL),
         vars = vars,
         out_crs = "epsg:4326",
         grid = grid,
         grid_resolution = grid_resolution
-    )) %>%
+    ))
+
+# TODO: Remove this block of code once the errors are found!
+# Examine NULL
+files_df %>%
+    dplyr::select(file_path, raster_ls) %>%
+    dplyr::mutate(is_null = purrr::map_lgl(raster_ls, is.null)) %>%
+    dplyr::filter(is_null)
+stop("Check for NULL before moving on")
+
+files_df <-
+    files_df %>%
     # Save rasters.
     dplyr::mutate(
         base_fname = file.path(out_dir,
