@@ -2,4 +2,4 @@
 
 export(grid_to_raster)
 export(make_grid_origin_res)
-export(tropomiday2sf)
+export(tropomiday2grid)

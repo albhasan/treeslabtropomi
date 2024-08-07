@@ -26,13 +26,20 @@ grid_helper <- function(o, min, max, res) {
 #'  the origin and will fit as many cells as possible in the area.
 #'
 #' @param xy_origin A numeric(2) representing an XY point.
+#' @param xy_min,xy_max A pair of numeric vectors with the minimum and maximum
+#'   coordiantes of the grid.
+#' @param cell_size A numeric of length 1 or 2. The width and heigth o a cell.
+#'   The units are those of the `crs`.
+#' @param crs Numeric or character representing a Coordinate Reference System.
+#' @param id_col character of length 1. Name of the column for identifying grid
+#'   cells.
 #'
 #' @export
 #'
 make_grid_origin_res <- function(xy_origin,
                                  xy_min,
                                  xy_max,
-                                 cell_size, 
+                                 cell_size,
                                  crs = 4326,
                                  id_col = "id") {
 
@@ -40,11 +47,16 @@ make_grid_origin_res <- function(xy_origin,
         xy_min[1] <= xy_origin[1], xy_origin[1] <= xy_max[1],
         xy_min[2] <= xy_origin[2], xy_origin[2] <= xy_max[2]
     ))
+    stopifnot("`cell_sizse` is too large!" =
+              all((xy_max - xy_min) >= cell_size))
 
     lon_grid <- grid_helper(o = xy_origin[1], min = xy_min[1], max = xy_max[1],
                             res = cell_size)
     lat_grid <- grid_helper(o = xy_origin[2], min = xy_min[2], max = xy_max[2],
                             res = cell_size)
+
+    stopifnot("Not enough room to fit a grid!" =
+        all(length(lon_grid) > 1, length(lat_grid) > 1))
 
     aoi_grid <- sf::st_as_sf(sf::st_make_grid(
         x = sf::st_bbox(c(xmin = min(lon_grid), xmax = max(lon_grid),

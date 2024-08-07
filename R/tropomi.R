@@ -1,7 +1,7 @@
 #' Read data from a HDF5 file
 #'
 #' @description
-#' Read the x variable from the given HDF5 file.
+#' DEPRECATED. Read the x variable from the given HDF5 file.
 #' 
 #' @param v     a character(1). Variable's name.
 #' @param fname a character(1). Path to a HDF5 file.
@@ -11,6 +11,7 @@
 #'
 read_var <- function(v, fname, group = NA) {
 
+    stop("DEPRECATED. Open and close HDF5 files inside the same function!")
     if (is.na(group))
         return(rhdf5::h5read(file = fname, name = v))
 
@@ -23,35 +24,34 @@ read_var <- function(v, fname, group = NA) {
 
 
 
-#' Export from TROPOMI to GeoTIF
+#' Aggregate TROPOMI daily data into a grid
 #'
 #' @description
-#' Export the given HDF5 file as points (sf object). The HDF5 file contents
-#' are ungridded TROPOMI SIF daily observations.
+#' Assume the give HDF5 file contains points and aggregate them using the given
+#' grid. The HDF5 file contents are assumed to be ungridded TROPOMI SIF daily
+#' observations.
 #'
-#' @param fname a character(1). Path to an HDF5 file.
+#' @param file_path a character(1). Path to an HDF5 file.
 #' @param vars a character. Names of the varibles to export. Note that the
 #'   first two elements must be the names of the variables longitude and
 #'   latitude in that order.
-#' @param out_crs a spatial reference system for the output tif files.
-#' @param min_x,min_y,max_x,max_y a numeric(1). Return the points faling in
-#'   these ranges.
+#' @param grid an sf object. A grid used to aggregate the given data.
+#' @param f a character(1). Name of an aggregation function.
 #'
-#' @return a list of sf objects (point).
+#' @return an sf object. The given grid with additional columns.
 #'
 #' @seealso
 #' Ungridded TROPOMI SIF (at 740nm) \url{https://doi.org/10.22002/D1.1347}
 #'
 #' @export
 #'
-tropomiday2sf <- function(fname, vars, out_crs = "epsg:4326",
-                          min_x = -Inf, min_y = -Inf,
-                          max_x = Inf,  max_y = Inf) {
+tropomiday2grid <- function(file_path, vars, grid, f = "mean") {
 
-    stopifnot("Input file is missing!" = file.exists(fname))
+    stopifnot("Expected only one file!" = length(file_path) == 1)
+    stopifnot("Input file is missing!" = file.exists(file_path))
     stopifnot("At least 3 variables are expected!" = length(vars) > 2)
 
-    h5_df <- rhdf5::h5ls(fname)
+    h5_df <- rhdf5::h5ls(file = file_path)
     h5_df <- h5_df[h5_df["otype"] == "H5I_DATASET", ]
     h5vars <- h5_df[["name"]]
     if (!all(vars %in% h5vars))
@@ -59,58 +59,52 @@ tropomiday2sf <- function(fname, vars, out_crs = "epsg:4326",
         %s.",  setdiff(vars, h5vars), paste(h5vars, collapse = ",")))
 
     h5_df <- h5_df[h5_df[["name"]] %in% vars, ]
-    h5_df["fname"] <- fname
+
+    stopifnot("All variables must belong to the same group!" = 
+        length(unique(h5_df[["group"]])) == 1)
 
     # Read data.
-    data_ls <- lapply(seq(nrow(h5_df)), function(r, h5_df) {
-        read_var(
-            v = h5_df[r, "name"],
-            fname = h5_df[r, "fname"],
-            group = h5_df[r, "group"]
-        )
-    }, h5_df = h5_df)
-    names(data_ls) <- h5_df[["name"]]
-
-    # Build name for output file.
-    out_fname_base <- basename(tools::file_path_sans_ext(fname))
-
-    # Loop varialbes in the given file.
-    # NOTE: The first 2 variables must be longitude and latitude.
-    sf_ls <- list()
-    for (v in names(data_ls)) {
-
-        if (v %in% vars[1:2]) next
-
-        vdata <- data_ls[[v]]
-
-        if (length(dim(vdata)) == 1) {
-            data_df <- as.data.frame(cbind(data_ls[[vars[1]]],
-                                           data_ls[[vars[2]]],
-                                           vdata))
-            colnames(data_df) <- c(vars[1:2], v)
-        } else if (length(dim(vdata)) == 3) {
-            stop("3D case not implemented!")
-        } else if (length(dim(vdata)) == 4) {
-            stop("4D case not implemented!")
-        } else{
-            stop("Unexpected number of dimensions!")
-        }
-
-        if (!is.infinite(min_x))
-            data_df <- data_df[data_df[[vars[1]]] >= min_x, ]
-        if (!is.infinite(min_y))
-            data_df <- data_df[data_df[[vars[2]]] >= min_y, ]
-        if (!is.infinite(max_x))
-            data_df <- data_df[data_df[[vars[1]]] <= max_x, ]
-        if (!is.infinite(max_y))
-            data_df <- data_df[data_df[[vars[2]]] <= max_y, ]
-
-        sf_ls[[v]]<- sf::st_as_sf(data_df, coords = vars[1:2], crs = out_crs)
-
+    h5g_conn <- rhdf5::H5Gopen(
+        h5loc = rhdf5::H5Fopen(name = file_path,
+                               native = TRUE, flags = "H5F_ACC_RDONLY"
+        ),
+        name = unique(h5_df[["group"]])
+    )
+    vars_ls <- list()
+    for (v in vars) {
+        vars_ls[[v]] <- rhdf5::h5read(file = h5g_conn, name = v)
     }
-    # TODO: I need to close the file connections!
-    #rhdf5::H5Gclose()
-    invisible(sf_ls)
+    stopifnot("The number of elements in each var must match!" = 
+        length(unique(vapply(vars_ls, length, integer(1)))) == 1
+    )
+
+    # Filter by longitude and latitude.
+    grid_bbox <- sf::st_bbox(grid)
+    filter_bb <- rep(TRUE, times = unique(vapply(vars_ls, length, integer(1))))
+    filter_bb <- filter_bb & (vars_ls[[vars[1]]] >= grid_bbox["xmin"])
+    filter_bb <- filter_bb & (vars_ls[[vars[1]]] <= grid_bbox["xmax"])
+    filter_bb <- filter_bb & (vars_ls[[vars[2]]] >= grid_bbox["ymin"])
+    filter_bb <- filter_bb & (vars_ls[[vars[2]]] <= grid_bbox["ymax"])
+    if (sum(filter_bb) == 0) {
+        rhdf5::h5closeAll()
+        #TODO: Get rid of this error. Return an empty raster.
+        stop("Spatial filter returns 0 rows!")
+    }
+    vars_ls <- lapply(vars_ls, function(x) {x[filter_bb]})
+
+    # Aggregate points into a vector grid.
+    grid <- stats::aggregate(
+        x = sf::st_as_sf(x = as.data.frame(vars_ls),
+                         coords = vars[1:2],
+                         crs = sf::st_crs(grid)),
+        by = grid,
+        FUN = f
+    )
+
+    rhdf5::h5closeAll()
+
+    return(grid)
+
 }
 
 

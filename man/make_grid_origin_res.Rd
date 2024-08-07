@@ -15,6 +15,17 @@ make_grid_origin_res(
 }
 \arguments{
 \item{xy_origin}{A numeric(2) representing an XY point.}
+
+\item{xy_min, xy_max}{A pair of numeric vectors with the minimum and maximum
+coordiantes of the grid.}
+
+\item{cell_size}{A numeric of length 1 or 2. The width and heigth o a cell.
+The units are those of the \code{crs}.}
+
+\item{crs}{Numeric or character representing a Coordinate Reference System.}
+
+\item{id_col}{character of length 1. Name of the column for identifying grid
+cells.}
 }
 \description{
 \code{make_grid_origin_res} returns a grid using the coordinates of an origin

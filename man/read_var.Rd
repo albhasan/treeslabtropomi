@@ -18,5 +18,5 @@ read_var(v, fname, group = NA)
 }\if{html}{\out{</div>}}
 }
 \description{
-Read the x variable from the given HDF5 file.
+DEPRECATED. Read the x variable from the given HDF5 file.
 }

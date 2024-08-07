@@ -35,18 +35,21 @@ out_dir <- "/home/alber/Downloads/tmp"
 vars <- c("longitude", "latitude", "SIF_735", "SIF_743")
 
 grid_resolution <- 0.083333
+grid_resolution <- 1
 
 # Create a grid for aggregating data.
 grid <- make_grid_origin_res(
-    xy_origin = c(-45.886944, -23.178889),
-    xy_min = c(-46, -24),
-    xy_max = c(-45, -22),
+    xy_origin = c(-74, -17),
+    xy_min = c(-74, -17),
+    xy_max = c(-43, -6),
     cell_size = grid_resolution,
     crs = 4326,
     id_col = "id"
 )
 
-
+on.exit({
+    rhdf5::h5closeAll()
+}, add = TRUE)
 
 #---- Validation ----
 
@@ -57,79 +60,86 @@ stopifnot("Output directory not found!" = file.exists(out_dir))
 
 #---- Utilitary functions ----
 
-# Aggregate TROPOMI data into a raster.
-agg_tropomi <- function(file_path, vars, out_crs, grid, grid_resolution) {
-
-    # Export TROPOMI to points.
-    grid_bbox <- sf::st_bbox(grid)
-    data_sf_ls <- tropomiday2sf(
-        fname = file_path,
-        vars = vars,
-        out_crs = out_crs,
-        min_x = grid_bbox["xmin"],
-        min_y = grid_bbox["ymin"],
-        max_x = grid_bbox["xmax"],
-        max_y = grid_bbox["ymax"]
-    )
-
-    # Aggregate points into a vector grid.
-    data_sf_ls <- lapply(
-        data_sf_ls,
-        function(x) {aggregate(x = x, by = grid, FUN = "mean")}
-    )
-
-    # Convert to raster.
-    data_r_ls <- lapply(
-        names(data_sf_ls),
-        function(name, data_sf_ls, res) {
-            return(grid_to_raster(grid_sf = data_sf_ls[[name]],
-                grid_resolution = res, cname = name))
-        },
-        data_sf_ls = data_sf_ls, res = grid_resolution
-    )
-    names(data_r_ls) <- names(data_sf_ls)
-
-    return(data_r_ls)
-
-}
-
-
-
-# Write a list of raster to disc
+# Export a grid to rasters
 #
 # @description
-# Helper function. Write a list of terra::rast to disc.
+# Helper. Export each column of the given grid (an sf object) to a raster
+# (terra object).
 #
-# @param raster_ls a list of terra::rast objects.
-# @param base_fname a character(1). A file path template used to build file
-#   names.
+# @param grid an sf object (polygon). A grid with attributes.
+# @param vars a character. Names of columns in the given grid.
+# @param grid_resolution a numeric. Resolution for rasterizing the grid.
 #
-# @return a character. File paths.
+# @return a list of terra::rast.
 #
-save_raster <- function(raster_ls, base_fname) {
-    fnames <- character(0)
-    for (name in names(raster_ls)) {
-        r <- raster_ls[[name]]
-        out_f <- paste0(base_fname, "_", paste0(name, ".tif"))
-        terra::writeRaster(r, filename = out_f)
-        fnames <- append(fnames, out_f)
-    }
-    return(fnames)
+grid_to_rasters <- function(grid, vars, grid_resolution) {
+
+    stopifnot("Variables not found in grid!" = all(vars %in% colnames(grid)))
+
+    rast_ls <- lapply(
+        vars,
+        function(v, grid, grid_resolution) {
+            grid_to_raster(
+                grid_sf = grid,
+                grid_resolution = grid_resolution,
+                cname = v
+            )
+        },
+        grid = grid, grid_resolution = grid_resolution
+    )
+
+    names(rast_ls) <- vars
+    return(rast_ls)
 }
 
 
 
-#----- Export TROPOMI to GeoTIF ----
+#---- List files ----
 
-
-# Export TROPOMI to raster.
 files_df <-
     in_dir %>%
     list.files(pattern = TROPOMI.DAILY.FILE.PATTERN,
         recursive = FALSE,
         full.names = TRUE) %>%
     tibble::as_tibble() %>%
-    dplyr::rename(file_path = "value") %>%
+    dplyr::rename(file_path = "value")
+
+
+
+#----- Find & report broken files ----
+
+files_df <- 
+    files_df %>%
+    dplyr::mutate(
+        is_null = purrr::map(file_path, purrr::possibly(rhdf5::h5ls)),
+        is_null = purrr::map_lgl(is_null, is.null)
+    )
+
+rhdf5::h5closeAll()
+
+broken_files <-
+    files_df %>%
+    dplyr::filter(is_null == TRUE)
+
+print("===============================================================")
+print("NOTE: Broken files found!")
+print("---------------------------------------------------------------")
+print(basename(broken_files$file_path))
+print("---------------------------------------------------------------")
+
+
+
+#----- Export TROPOMI to GeoTIF ----
+
+
+
+# Export TROPOMI to raster.
+
+files_df <-
+    files_df %>%
+    # Ignore invalid files.
+    dplyr::filter(is_null == FALSE) %>%
+    dplyr::select(-is_null) %>%
     dplyr::mutate(file_name = basename(file_path)) %>%
     tidyr::separate_wider_delim(
         cols = file_name, 
@@ -137,39 +147,46 @@ files_df <-
         names = c("mission", "type", "date")
     ) %>%
     dplyr::mutate(date = lubridate::as_date(date)) %>%
-    # Export TROPOMI to raster
-    dplyr::mutate(raster_ls = purrr::map(
-        file_path, 
-# TODO: Remove call to possibly
-        .f = purrr::possibly(agg_tropomi, NULL),
-        vars = vars,
-        out_crs = "epsg:4326",
-        grid = grid,
-        grid_resolution = grid_resolution
-    ))
-
-# TODO: Remove this block of code once the errors are found!
-# Examine NULL
-files_df %>%
-    dplyr::select(file_path, raster_ls) %>%
-    dplyr::mutate(is_null = purrr::map_lgl(raster_ls, is.null)) %>%
-    dplyr::filter(is_null)
-stop("Check for NULL before moving on")
-
-files_df <-
-    files_df %>%
-    # Save rasters.
     dplyr::mutate(
-        base_fname = file.path(out_dir,
-            tools::file_path_sans_ext(basename(file_path))),
-        tropo_r = purrr::map2(
-            .x = raster_ls,
-            .y = base_fname,
-            .f = save_raster
+        grid = purrr::map(
+            file_path,
+            tropomiday2grid,
+            vars = vars,
+            grid = grid,
+            f = "mean"
         )
     ) %>%
-    dplyr::select(-raster_ls, -base_fname) %>%
-    tidyr::unnest(tropo_r)
+    dplyr::mutate(
+        rast_ls = purrr::map(
+            grid,
+            grid_to_rasters,
+            vars = vars[3:length(vars)],
+            grid_resolution = grid_resolution
+        )
+    ) %>%
+    dplyr::select(-grid) %>%
+    tidyr::unnest(rast_ls) %>%
+    dplyr::mutate(var_name = names(rast_ls)) %>%
+    dplyr::mutate(
+        tropo_r = file.path(
+            out_dir,
+            paste0(tools::file_path_sans_ext(basename(file_path)), 
+                   "_", var_name, ".tif")
+        )
+    ) %>%
+    dplyr::mutate(
+        tropo_r = purrr::map2_chr(rast_ls, tropo_r,
+            function(r, fname) {
+                terra::writeRaster(
+                    x = r,
+                    filename = fname
+                )
+                return(fname)
+            }
+        )
+    )
+
+
 
 # Compute the monthly mean.
 monthly_mean_df <-
