@@ -130,8 +130,10 @@ tropomi8day2tif <- function(fname, vars, out_dir, in_nodata = -999,
                             out_crs = "epsg:4326") {
 
     stopifnot("Input file doesn't exist!" = file.exists(fname))
+    stopifnot("Only one file allowed!" = length(fname) == 1)
     stopifnot("Output directory not found!" = dir.exists(out_dir))
     stopifnot("At least 3 variables are expected!" = length(vars) > 2)
+
     h5_df <- rhdf5::h5ls(fname)
     h5_df <- h5_df[h5_df["otype"] == "H5I_DATASET", ]
     h5vars <- h5_df[["name"]]
@@ -140,58 +142,55 @@ tropomi8day2tif <- function(fname, vars, out_dir, in_nodata = -999,
         %s.",  setdiff(vars, h5vars), paste(h5vars, collapse = ",")))
 
     h5_df <- h5_df[h5_df[["name"]] %in% vars, ]
-    h5_df["fname"] <- fname
 
     # Read data.
-    data_ls <- lapply(seq(nrow(h5_df)), function(r, h5_df) {
-        read_var(
-            v = h5_df[r, "name"],
-            fname = h5_df[r, "fname"]
-            #group = h5_df[r, "group"]
-        )
-    }, h5_df = h5_df)
-    names(data_ls) <- h5_df[["name"]]
+    vars_ls <- list()
+    for (v in vars) {
+        vars_ls[[v]] <- rhdf5::h5read(file = fname, name = v)
+    }
 
     # Get extent.
     # NOTE: The coordinates correspond to pixel centers.
-    x_size <- diff(data_ls[[vars[1]]][1:2])
-    y_size <- diff(data_ls[[vars[2]]][1:2])
-    x_min <- range(data_ls[[vars[1]]])[1] - (x_size / 2)
-    x_max <- range(data_ls[[vars[1]]])[2] + (x_size / 2)
-    y_min <- range(data_ls[[vars[2]]])[1] - (y_size / 2)
-    y_max <- range(data_ls[[vars[2]]])[2] + (y_size / 2)
+    x_size <- diff(vars_ls[[vars[1]]][1:2])
+    y_size <- diff(vars_ls[[vars[2]]][1:2])
+    x_min <- range(vars_ls[[vars[1]]])[1] - (x_size / 2)
+    x_max <- range(vars_ls[[vars[1]]])[2] + (x_size / 2)
+    y_min <- range(vars_ls[[vars[2]]])[1] - (y_size / 2)
+    y_max <- range(vars_ls[[vars[2]]])[2] + (y_size / 2)
 
     # Build name for out file.
     out_fname_base <- basename(tools::file_path_sans_ext(fname))
 
     # Loop varialbes in the given file.
-    # NOTE: The first 2 variables are longitude and latitude.
+    # NOTE: The first 2 variables in vars are longitude and latitude.
     out_files <- character(0)
     for (v in vars[3:length(vars)]) {
-        vdata <- data_ls[[v]]
+        vdata <- vars_ls[[v]]
         stopifnot("Unexpected number of dimensions!" = length(dim(vdata)) == 3)
 
         # Loop the data in each variable.
         # NOTE: Assume the 1st dimension is time, the 2nd is longitude, and the
         #       3rd is latitude.
-        # NOTE: Assume SRS WGS84.
         for (tindex in seq(dim(vdata)[1])) {
             tdata <- vdata[tindex,,]
 
-            if (all(is.na(tdata))) {
-                warning("No data found for time index", tindex)
+            if (all(tdata == in_nodata)) {
+                warning("No data found for time index: ", tindex)
                 next
             }
 
             out_f <- file.path(out_dir, paste0(out_fname_base, "_",
                 sprintf("%03d", tindex), ".tif")
             )
+
             r <- terra::flip(terra::trans(terra::rast(tdata)))
+
             terra::crs(r)  <- out_crs
             terra::xmin(r) <- x_min
             terra::xmax(r) <- x_max
             terra::ymin(r) <- y_min
             terra::ymax(r) <- y_max
+
             terra::writeRaster(
                 r,
                 filename = out_f,
