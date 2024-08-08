@@ -37,6 +37,8 @@ read_var <- function(v, fname, group = NA) {
 #'   latitude in that order.
 #' @param grid an sf object. A grid used to aggregate the given data.
 #' @param f a character(1). Name of an aggregation function.
+#' @param in_na_value a numeric. Numeric value used to represente NAs in the 
+#'   given file.
 #'
 #' @return an sf object. The given grid with additional columns.
 #'
@@ -45,7 +47,8 @@ read_var <- function(v, fname, group = NA) {
 #'
 #' @export
 #'
-tropomiday2grid <- function(file_path, vars, grid, f = "mean") {
+tropomiday2grid <- function(file_path, vars, grid, f = "mean",
+    in_na_value = 9969209968386869046778552952102584320) {
 
     stopifnot("Expected only one file!" = length(file_path) == 1)
     stopifnot("Input file is missing!" = file.exists(file_path))
@@ -66,13 +69,15 @@ tropomiday2grid <- function(file_path, vars, grid, f = "mean") {
     # Read data.
     h5g_conn <- rhdf5::H5Gopen(
         h5loc = rhdf5::H5Fopen(name = file_path,
-                               native = TRUE, flags = "H5F_ACC_RDONLY"
-        ),
+                               native = TRUE,
+                               flags = "H5F_ACC_RDONLY"),
         name = unique(h5_df[["group"]])
     )
     vars_ls <- list()
     for (v in vars) {
         vars_ls[[v]] <- rhdf5::h5read(file = h5g_conn, name = v)
+        # Replace numeric NAs with actual NA.
+        vars_ls[[v]] [vars_ls[[v]] == in_na_value] <- NA
     }
     stopifnot("The number of elements in each var must match!" = 
         length(unique(vapply(vars_ls, length, integer(1)))) == 1
@@ -101,7 +106,8 @@ tropomiday2grid <- function(file_path, vars, grid, f = "mean") {
                          coords = vars[1:2],
                          crs = sf::st_crs(grid)),
         by = grid,
-        FUN = f
+        FUN = f,
+        na.rm = TRUE
     )
 
     rhdf5::h5closeAll()

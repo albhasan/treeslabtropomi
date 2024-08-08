@@ -1,6 +1,6 @@
 Package: treeslabtropomi
 Title: Utilities for Handling TROPOMI SIF Data
-Version: 0.0.0.9003
+Version: 0.0.0.9004
 Authors@R: c(person("Alber",  "Sánchez",  email = "alber.ipia@inpe.br",       role = c("aut", "cre"), comment = c(ORCID = "0000-0001-7966-2880")),
              person("Edgard", "Bontempo", email = "edgardbontempo@gmail.com", role = c("aut"),        comment = c(ORCID = "0000-0002-4004-9605"))
             )

@@ -4,7 +4,13 @@
 \alias{tropomiday2grid}
 \title{Aggregate TROPOMI daily data into a grid}
 \usage{
-tropomiday2grid(file_path, vars, grid, f = "mean")
+tropomiday2grid(
+  file_path,
+  vars,
+  grid,
+  f = "mean",
+  in_na_value = 9.96920996838687e+36
+)
 }
 \arguments{
 \item{file_path}{a character(1). Path to an HDF5 file.}
@@ -16,6 +22,9 @@ latitude in that order.}
 \item{grid}{an sf object. A grid used to aggregate the given data.}
 
 \item{f}{a character(1). Name of an aggregation function.}
+
+\item{in_na_value}{a numeric. Numeric value used to represente NAs in the
+given file.}
 }
 \value{
 an sf object. The given grid with additional columns.

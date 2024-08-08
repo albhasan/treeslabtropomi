@@ -34,18 +34,19 @@ out_dir <- "/home/alber/Downloads/tmp"
 # NOTE: lon & lat should always be the first two variables!
 vars <- c("longitude", "latitude", "SIF_735", "SIF_743")
 
-grid_resolution <- 0.083333
 grid_resolution <- 1
 
 # Create a grid for aggregating data.
 grid <- make_grid_origin_res(
-    xy_origin = c(-74, -17),
-    xy_min = c(-74, -17),
-    xy_max = c(-43, -6),
+    xy_origin = c(129, 28),
+    xy_min = c(129, 28),
+    xy_max = c(147, 47),
     cell_size = grid_resolution,
     crs = 4326,
     id_col = "id"
 )
+
+
 
 # Function for aggregating observations into a grid.
 agg_function <- "mean"
