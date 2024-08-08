@@ -1,7 +1,7 @@
 ###############################################################################
 # COMPUTE MONTHLY AVERGAGE TROPOMI FROM THE DAILY READINGS
 # alber.ipia@inpe.br
-# Last update: 2024-07-30
+# Last update: 2024-08-07
 #------------------------------------------------------------------------------
 ## Install required packages.
 #install.packages(c("terra", "BiocManager"))
@@ -47,6 +47,9 @@ grid <- make_grid_origin_res(
     id_col = "id"
 )
 
+# Function for aggregating observations into a grid.
+agg_function <- "mean"
+
 on.exit({
     rhdf5::h5closeAll()
 }, add = TRUE)
@@ -55,6 +58,7 @@ on.exit({
 
 stopifnot("Input directory not found!" = file.exists(in_dir))
 stopifnot("Output directory not found!" = file.exists(out_dir))
+stopifnot("Only one aggregation function allowed!" = length(agg_function) == 1)
 
 
 
@@ -143,21 +147,28 @@ files_df <-
     dplyr::filter(is_null == FALSE) %>%
     dplyr::select(-is_null) %>%
     dplyr::mutate(file_name = basename(file_path)) %>%
+    # Get metadata from files' names.
     tidyr::separate_wider_delim(
         cols = file_name, 
         delim = "_", 
         names = c("mission", "type", "date")
     ) %>%
     dplyr::mutate(date = lubridate::as_date(date)) %>%
+    # Aggregate observations into a grid.
     dplyr::mutate(
         grid = purrr::map(
             file_path,
             tropomiday2grid,
             vars = vars,
             grid = grid,
-            f = "mean"
+            f = agg_function
         )
     ) %>%
+    # Remove grids filled with NAs.
+    dplyr::mutate(is_grid_na = purrr::map_lgl(grid, is_grid_na)) %>%
+    dplyr::filter(!is_grid_na) %>%
+    dplyr::select(-is_grid_na) %>%
+    # Export grids to raster.
     dplyr::mutate(
         rast_ls = purrr::map(
             grid,
@@ -169,6 +180,7 @@ files_df <-
     dplyr::select(-grid) %>%
     tidyr::unnest(rast_ls) %>%
     dplyr::mutate(var_name = names(rast_ls)) %>%
+    # Save rasters to disc.
     dplyr::mutate(
         tropo_r = file.path(
             out_dir,

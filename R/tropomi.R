@@ -87,8 +87,11 @@ tropomiday2grid <- function(file_path, vars, grid, f = "mean") {
     filter_bb <- filter_bb & (vars_ls[[vars[2]]] <= grid_bbox["ymax"])
     if (sum(filter_bb) == 0) {
         rhdf5::h5closeAll()
-        #TODO: Get rid of this error. Return an empty raster.
-        stop("Spatial filter returns 0 rows!")
+        warning("No observations found in the grid!")
+        for (v in vars[3:length(vars)]) {
+            grid[v] <- NA
+        }
+        return(grid)
     }
     vars_ls <- lapply(vars_ls, function(x) {x[filter_bb]})
 

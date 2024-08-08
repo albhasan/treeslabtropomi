@@ -106,3 +106,24 @@ grid_to_raster <- function(grid_sf, grid_resolution, cname) {
 }
 
 
+
+#' Are grid attributes NAs?
+#'
+#' @description
+#' Test whether all the values in the given grid are NA.
+#'
+#' @param x a grid (sf object).
+#'
+#' @return a logical
+#'
+is_grid_na <- function(x) {
+    stopifnot("Expected an `sf` object!" = inherits(x, what = "sf"))
+    stopifnot("Expected polygon geometry!" = 
+        unique(sf::st_geometry_type(x)) %in% c("POLYGON", "MULTIPOLYGON"))
+    return(all(vapply(
+        X = colnames(sf::st_drop_geometry(x)),
+        FUN = function(v, x) {all(is.na(x[[v]]))},
+        FUN.VALUE = logical(1), x = x
+    )))
+}
+
